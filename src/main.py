@@ -29,6 +29,26 @@ def traiter_bon(chemin: Path, commandes: dict, deja_livrees: set[str], client) -
     return construire_fiche(chemin.name, bon, numero, statut, ecarts)
 
 
+def decrire_ecart(ecart: dict) -> str:
+    """Une ligne lisible : nature, référence et comparaison attendu / reçu."""
+    morceaux = [ecart["nature"]]
+    if ecart["reference"]:
+        morceaux.append(ecart["reference"])
+    if ecart["qte_attendue"] is not None or ecart["qte_recue"] is not None:
+        attendu = "-" if ecart["qte_attendue"] is None else ecart["qte_attendue"]
+        recu = "-" if ecart["qte_recue"] is None else ecart["qte_recue"]
+        morceaux.append(f"attendu {attendu}, reçu {recu}")
+    if ecart.get("detail"):
+        morceaux.append(ecart["detail"])
+    return " | ".join(morceaux)
+
+
+def afficher_fiche(fiche: dict) -> None:
+    print(f"{fiche['fichier_bon']} : {fiche['statut']}")
+    for ecart in fiche["ecarts"]:
+        print(f"    - {decrire_ecart(ecart)}")
+
+
 def lire_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Rapprochement des bons de livraison")
     parser.add_argument("--bons", default="ressource/BonCommande")
@@ -54,7 +74,7 @@ def main() -> int:
         fiches.append(fiche)
         if fiche["statut"] != "CONFORME":
             ecrire_fiche(out, fiche)
-        print(f"{chemin.name} : {fiche['statut']}")
+        afficher_fiche(fiche)
     recap = ecrire_recap(out, date.today().isoformat(), fiches)
     conformes = sum(f["statut"] == "CONFORME" for f in fiches)
     print(f"{len(fiches)} livraisons, {conformes} conformes, {len(fiches) - conformes} fiches -> {recap}")
