@@ -19,9 +19,9 @@ Projet volontairement minimal : pas d'API web, pas de base de données, pas d'UI
 e03/
 ├── CLAUDE.md
 ├── requirements.txt          # anthropic, pytest
-├── data/
-│   ├── bons/                 # 15 bons .txt (LECTURE SEULE)
-│   └── commandes.csv         # LECTURE SEULE
+├── ressource/                # données fournies (LECTURE SEULE)
+│   ├── BonCommande/          # 15 bons BL-2026-04xx.txt
+│   └── commandes_achat.csv
 ├── output/                   # seul dossier en écriture (recréé à chaque run)
 ├── src/
 │   ├── main.py               # point d'entrée : python -m src.main
@@ -34,21 +34,21 @@ e03/
 
 ## Données d'entrée
 
-### `data/commandes.csv`
+### `ressource/commandes_achat.csv` (séparateur virgule, champs entre guillemets si besoin)
 ```
-num_commande;reference;designation;qte_commandee;distributeur
-CA-1001;REF-A12;Palette eau 6x1.5L;20;DistriNord
+numero_commande,reference,designation,quantite_commandee,distributeur,date_commande
+CMD-2026-0401,REF-2201A,Panneau de cloison 120 x 240 cm,40,Alvarin Distribution SA,2026-09-21
 ```
 
-### `data/bons/*.txt` (15 fichiers fictifs à générer en premier)
+### `ressource/BonCommande/*.txt` (15 fichiers fournis, ne pas en créer d'autres)
 Formats volontairement hétérogènes (3 transporteurs : tableau, liste « clé: valeur », texte libre).
-Répartition à respecter pour couvrir tous les cas :
+Cas couverts par les données fournies (table de vérité complète dans le README) :
 
 | Nb | Cas | Exemple |
 |----|-----|---------|
 | 8 | Conforme | quantités = commande |
 | 2 | Quantité manquante | 18 reçus / 20 commandés |
-| 1 | Référence erronée | REF-A13 au lieu de REF-A12 (ou réf. absente de la commande) |
+| 1 | Référence erronée | REF-A13 au lieu de REF-2201A (ou réf. absente de la commande) |
 | 1 | Colis abîmé | mention manuscrite « 2 cartons abîmés » |
 | 1 | Faute de frappe tolérable | « Comande CA1001 », « qté » → doit rester **conforme** |
 | 1 | Illisible / ambigu | quantité « 1? », n° commande manquant → **à vérifier** |
@@ -58,19 +58,20 @@ Chaque bon contient : n° de commande, date + heure de réception, lignes (réf�
 
 ## Pipeline
 
-1. **Lire** `commandes.csv` → `dict[num_commande] -> {reference: qte}`.
+1. **Lire** `commandes_achat.csv` → `dict[num_commande] -> {reference: qte}`.
 2. **Extraire** chaque bon via le LLM (`extract.py`) → JSON strict :
    ```json
-   {"num_commande": "CA-1001", "date_reception": "2026-10-20T08:30",
-    "lignes": [{"reference": "REF-A12", "qte_recue": 18}],
+   {"num_commande": "CMD-2026-0401", "date_reception": "2026-10-20T08:30",
+    "lignes": [{"reference": "REF-2201A", "qte_recue": 18}],
     "remarques": ["2 cartons abîmés"], "lisible": true, "doutes": []}
    ```
    - Prompt : « Extrais sans rien deviner. Si une valeur est illisible ou ambiguë, mets `lisible:false` et décris-la dans `doutes`. » Réponse JSON uniquement.
-   - Normaliser ensuite en code : majuscules, trim, `CA1001` → `CA-1001`.
+   - Normaliser ensuite en code : clé de comparaison majuscules sans espaces ni tirets (`CMD 2026 0402` → `CMD-2026-0402`, `REF 4417 B` → `REF-4417B`).
 3. **Comparer** (`compare.py`, pur Python, testable sans LLM). Types d'écart :
-   `QUANTITE_MANQUANTE`, `EXCEDENT`, `REFERENCE_ERRONEE`, `REFERENCE_MANQUANTE`, `COLIS_ABIME`, `A_VERIFIER`.
+   `QUANTITE_MANQUANTE`, `EXCEDENT`, `REFERENCE_ERRONEE`, `REFERENCE_MANQUANTE`, `COLIS_ABIME`, `LIVRAISON_EN_DOUBLE`, `A_VERIFIER`.
    - `lisible == false` ou commande introuvable → `A_VERIFIER`, aucune supposition.
    - Remarque contenant « abîm », « endommag », « cassé » → `COLIS_ABIME`.
+   - Commande déjà livrée par un bon précédent → `LIVRAISON_EN_DOUBLE` (fiche `NON_CONFORME`).
 4. **Date limite** = `date_reception + timedelta(hours=48)` (format ISO).
 5. **Écrire** dans `output/` :
    - `fiche_<num_commande>.json` par livraison non conforme
@@ -79,13 +80,13 @@ Chaque bon contient : n° de commande, date + heure de réception, lignes (réf�
 ### Format d'une fiche
 ```json
 {
-  "num_commande": "CA-1001",
-  "fichier_bon": "bon_03.txt",
+  "num_commande": "CMD-2026-0401",
+  "fichier_bon": "BL-2026-0401.txt",
   "statut": "NON_CONFORME",          // ou "A_VERIFIER"
   "date_reception": "2026-10-20T08:30",
   "date_limite_signalement": "2026-10-22T08:30",
   "ecarts": [
-    {"reference": "REF-A12", "qte_attendue": 20, "qte_recue": 18, "nature": "QUANTITE_MANQUANTE"}
+    {"reference": "REF-2201A", "qte_attendue": 20, "qte_recue": 18, "nature": "QUANTITE_MANQUANTE"}
   ],
   "a_relire_par": "agent administratif"
 }
@@ -93,17 +94,17 @@ Chaque bon contient : n° de commande, date + heure de réception, lignes (réf�
 
 ## Contraintes (non négociables)
 
-- **Écriture uniquement dans `output/`**. Ne jamais ouvrir `data/` en mode écriture.
+- **Écriture uniquement dans `output/`**. Ne jamais ouvrir `ressource/` en mode écriture.
   Vérifier dans `report.py` que tout chemin écrit est sous `output/` (`Path.resolve()`).
 - Bon illisible / ambigu → fiche `A_VERIFIER`, jamais de valeur inventée.
 - Lancement complet en **une seule commande** :
   ```bash
-  python -m src.main            # options : --bons data/bons --commandes data/commandes.csv --out output
+  python -m src.main            # options : --bons ressource/BonCommande --commandes ressource/commandes_achat.csv --out output
   ```
 
-## Tests (limités, 5 max — `pytest -q`)
+## Tests (limités, 10 max — `pytest -q`)
 
-Tous sur `compare.py` + date, **sans appel LLM** (on passe des dicts déjà extraits) :
+Tous sur `compare.py` + date, **sans appel LLM**, sur les données fournies (CSV réel + dicts reproduisant les bons réels) :
 
 1. Livraison conforme → aucun écart.
 2. Quantité manquante → `QUANTITE_MANQUANTE` avec qte attendue/reçue correctes.
@@ -115,11 +116,11 @@ Tous sur `compare.py` + date, **sans appel LLM** (on passe des dicts déjà extr
 
 | Min | Tâche |
 |-----|-------|
-| 0–10 | Générer `commandes.csv` + 15 bons selon le tableau des cas |
+| 0–10 | Socle (données déjà fournies dans `ressource/`) |
 | 10–25 | `compare.py` + date limite + les 5 tests (verts) |
 | 25–40 | `extract.py` (prompt + parsing JSON + normalisation) |
 | 40–50 | `report.py` + `main.py`, run complet |
-| 50–60 | Vérifier le récap : 8 conformes, 7 fiches, 0 faux écart ; README court |
+| 50–60 | Vérifier le récap : 7 conformes, 8 fiches, 0 faux écart ; README court |
 
 ## Conventions pour Claude
 
