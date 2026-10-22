@@ -21,17 +21,14 @@ Lis d'abord `CLAUDE.md` à la racine : il fait foi pour les règles du projet.
 
 ## 3. Installation pas à pas
 
-### 3.1 Cloner le dépôt et se placer sur la bonne branche
+### 3.1 Cloner le dépôt
 
 ```bash
 git clone https://github.com/Galgo-dev/agent_ia_commande.git
 cd agent_ia_commande
-git checkout feature/affichage-ecarts
 ```
 
-> `main` ne contient pour l'instant que le cahier des charges et les données.
-> Le code complet (src, tests, README) est sur `feature/affichage-ecarts`, en attente de pull request.
-> Si les PR ont été fusionnées entre-temps, `main` suffit.
+> La branche `main` contient le projet complet (code, tests, README, données) : rester dessus.
 
 ### 3.2 Créer l'environnement virtuel et installer les dépendances
 
@@ -116,12 +113,12 @@ git checkout -b feature/<nom-court>
 | `ModuleNotFoundError: anthropic` | venv non activé ou dépendances non installées | activer `.venv`, relancer `pip install -r requirements.txt` |
 | Erreur d'authentification Anthropic | clé absente ou invalide | vérifier `.env` ou la variable `ANTHROPIC_API_KEY` |
 | `python -m src.main` lancé depuis un autre dossier | chemins relatifs | se placer à la racine du dépôt |
-| Tests introuvables | mauvaise branche | `git checkout feature/affichage-ecarts` |
+| Tests introuvables | mauvaise branche | `git checkout main` |
 | `Activate.ps1` refusé par PowerShell | politique d'exécution | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` puis réessayer |
 
 ## 7. Checklist de fin d'installation
 
-- [ ] dépôt cloné, branche `feature/affichage-ecarts` (ou `main` si fusionnée)
+- [ ] dépôt cloné, sur la branche `main`
 - [ ] `.venv` activé, `pip install -r requirements.txt` sans erreur
 - [ ] `.env` créé par l'utilisateur avec `ANTHROPIC_API_KEY`
 - [ ] `python -m pytest -q` : 9 tests verts
